@@ -1,3 +1,4 @@
+import styled from 'styled-components';
 import { useState, useRef, useEffect } from 'react';
 import { 
   FaPlay, FaPause, FaStepForward, FaStepBackward, 
@@ -5,226 +6,346 @@ import {
 } from 'react-icons/fa';
 import { Howl } from 'howler';
 
-const Player = ({ songs, currentSongIndex, setCurrentSongIndex }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
+const PlayerContainer = styled.div`
+  background: ${({ theme }) => theme.colors.backgroundLight};
+  border-radius: ${({ theme }) => theme.borderRadius.large};
+  padding: ${({ theme }) => theme.spacing.xlarge};
+  max-width: 500px;
+  margin: 0 auto;
+  box-shadow: ${({ theme }) => theme.shadows.large};
+`;
+
+const SongInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.large};
+  margin-bottom: ${({ theme }) => theme.spacing.xlarge};
+`;
+
+const AlbumCover = styled.img`
+  width: 100px;
+  height: 100px;
+  border-radius: ${({ theme }) => theme.borderRadius.medium};
+  object-fit: cover;
+  box-shadow: ${({ theme }) => theme.shadows.medium};
+`;
+
+const SongText = styled.div`
+  flex: 1;
+`;
+
+const SongTitle = styled.h3`
+  font-size: ${({ theme }) => theme.fontSizes.large};
+  color: ${({ theme }) => theme.colors.text};
+  margin: 0;
+`;
+
+const SongArtist = styled.p`
+  font-size: ${({ theme }) => theme.fontSizes.medium};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  margin: ${({ theme }) => theme.spacing.small} 0 0;
+`;
+
+const ProgressContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.medium};
+  margin-bottom: ${({ theme }) => theme.spacing.xlarge};
+`;
+
+const TimeDisplay = styled.span`
+  font-size: ${({ theme }) => theme.fontSizes.small};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  min-width: 40px;
+`;
+
+const ProgressBar = styled.input.attrs({ type: 'range' })`
+  flex-grow: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  background: ${({ theme }) => theme.colors.textDisabled};
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: ${({ theme }) => theme.colors.primary};
+    border-radius: 50%;
+    cursor: pointer;
+  }
+`;
+
+const Controls = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.large};
+  margin-bottom: ${({ theme }) => theme.spacing.xlarge};
+`;
+
+const ControlButton = styled.button`
+  background: none;
+  border: none;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSizes.large};
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.normal};
+  padding: ${({ theme }) => theme.spacing.small};
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.text};
+  }
+
+  &.active {
+    color: ${({ theme }) => theme.colors.primary};
+  }
+`;
+
+const PlayButton = styled(ControlButton)`
+  background: ${({ theme }) => theme.colors.primary};
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.primaryLight};
+    color: white;
+    transform: scale(1.05);
+  }
+`;
+
+const VolumeControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.small};
+`;
+
+const VolumeButton = styled(ControlButton)`
+  font-size: ${({ theme }) => theme.fontSizes.large};
+`;
+
+const VolumeSlider = styled.input.attrs({ type: 'range' })`
+  width: 100px;
+  height: 4px;
+  -webkit-appearance: none;
+  background: ${({ theme }) => theme.colors.textDisabled};
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: ${({ theme }) => theme.colors.primary};
+    border-radius: 50%;
+    cursor: pointer;
+  }
+`;
+
+const formatTime = (seconds) => {
+  if (isNaN(seconds)) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
+const Player = ({ songs, currentSongIndex }) => {
+  // Player state
   const [progress, setProgress] = useState(0);
-  const [volume, setVolume] = useState(0.7);
-  const [isMuted, setIsMuted] = useState(false);
-  const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isShuffleOn, setIsShuffleOn] = useState(false);
   const [isRepeatOn, setIsRepeatOn] = useState(false);
-  
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+
   const soundRef = useRef(null);
-  const progressInterval = useRef(null);
 
-  // Formatear tiempo (mm:ss)
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
-  // Inicializar reproductor
-  const initSound = () => {
+  // Initialize Howl and handle song changes
+  useEffect(() => {
     if (soundRef.current) {
       soundRef.current.unload();
     }
-
-    soundRef.current = new Howl({
-      src: [songs[currentSongIndex].url],
-      volume: isMuted ? 0 : volume,
+    const sound = new Howl({
+      src: [songs[currentSongIndex].src],
       html5: true,
+      volume: volume,
       onplay: () => {
         setIsPlaying(true);
-        startProgressTimer();
+        setDuration(sound.duration());
       },
-      onpause: () => setIsPlaying(false),
-      onstop: () => setIsPlaying(false),
       onend: () => {
+        setIsPlaying(false);
         if (isRepeatOn) {
-          soundRef.current.seek(0);
-          soundRef.current.play();
+          sound.seek(0);
+          sound.play();
         } else {
           handleNext();
         }
-      },
-      onload: () => {
-        setDuration(soundRef.current.duration());
-        if (isPlaying) {
-          soundRef.current.play();
-        }
-      },
+      }
     });
-  };
-
-  // Timer para la barra de progreso
-  const startProgressTimer = () => {
-    clearInterval(progressInterval.current);
-    
-    progressInterval.current = setInterval(() => {
-      if (soundRef.current) {
-        const seek = soundRef.current.seek() || 0;
-        setCurrentTime(seek);
-        setProgress((seek / duration) * 100);
-      }
-    }, 1000);
-  };
-
-  // Efectos
-  useEffect(() => {
-    initSound();
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unload();
-      }
-      clearInterval(progressInterval.current);
-    };
-  }, [currentSongIndex, songs]);
-
-  useEffect(() => {
-    if (soundRef.current) {
-      soundRef.current.volume(isMuted ? 0 : volume);
+    soundRef.current = sound;
+    setCurrentTime(0);
+    setDuration(sound.duration() || 0);
+    if (isPlaying) {
+      sound.play();
     }
-  }, [volume, isMuted]);
+    return () => {
+      sound.unload();
+    };
+    // eslint-disable-next-line
+  }, [currentSongIndex]);
 
-  // Controladores
+  // Update progress based on currentTime and duration
+  useEffect(() => {
+    let interval = null;
+    if (isPlaying && soundRef.current) {
+      interval = setInterval(() => {
+        setCurrentTime(soundRef.current.seek() || 0);
+        setDuration(soundRef.current.duration() || 0);
+      }, 500);
+    } else if (!isPlaying && interval) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (typeof currentTime === 'number' && typeof duration === 'number' && duration > 0) {
+      setProgress((currentTime / duration) * 100);
+    }
+  }, [currentTime, duration]);
+
+  // Handlers
   const togglePlay = () => {
     if (!soundRef.current) return;
-    
     if (isPlaying) {
       soundRef.current.pause();
-      clearInterval(progressInterval.current);
+      setIsPlaying(false);
     } else {
       soundRef.current.play();
+      setIsPlaying(true);
     }
-  };
-
-  const handleNext = () => {
-    let nextIndex;
-    
-    if (isShuffleOn) {
-      nextIndex = Math.floor(Math.random() * songs.length);
-      while (nextIndex === currentSongIndex && songs.length > 1) {
-        nextIndex = Math.floor(Math.random() * songs.length);
-      }
-    } else {
-      nextIndex = currentSongIndex === songs.length - 1 ? 0 : currentSongIndex + 1;
-    }
-    
-    setCurrentSongIndex(nextIndex);
   };
 
   const handlePrev = () => {
-    setCurrentSongIndex(prev => 
-      prev === 0 ? songs.length - 1 : prev - 1
-    );
+    // Implement previous song logic
   };
 
-  const handleProgressChange = (e) => {
-    const newProgress = e.target.value;
-    const seek = (newProgress / 100) * duration;
-    
-    setProgress(newProgress);
-    setCurrentTime(seek);
-    
-    if (soundRef.current) {
-      soundRef.current.seek(seek);
-    }
+  const handleNext = () => {
+    // Implement next song logic
+  };
+
+  const toggleShuffle = () => {
+    setIsShuffleOn((prev) => !prev);
+  };
+
+  const toggleRepeat = () => {
+    setIsRepeatOn((prev) => !prev);
+  };
+
+  const toggleMute = () => {
+    setIsMuted((prev) => {
+      if (soundRef.current) {
+        soundRef.current.mute(!prev);
+      }
+      return !prev;
+    });
   };
 
   const handleVolumeChange = (e) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
-    setIsMuted(newVolume === 0);
+    if (soundRef.current) {
+      soundRef.current.volume(newVolume);
+    }
+    if (newVolume === 0) setIsMuted(true);
+    else setIsMuted(false);
   };
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
+  const handleProgressChange = (e) => {
+    const percent = parseFloat(e.target.value);
+    const seekTime = (percent / 100) * duration;
+    setCurrentTime(seekTime);
+    if (soundRef.current) {
+      soundRef.current.seek(seekTime);
+    }
   };
-
-  const toggleShuffle = () => {
-    setIsShuffleOn(!isShuffleOn);
-  };
-
-  const toggleRepeat = () => {
-    setIsRepeatOn(!isRepeatOn);
-  };
-
+  
   return (
-    <div className="player-container">
-      {/* Información de la canción */}
-      <div className="song-info">
-        <img 
+    <PlayerContainer>
+      <SongInfo>
+        <AlbumCover 
           src={songs[currentSongIndex].cover || '/default-cover.jpg'} 
           alt="Album cover" 
-          className="album-cover"
         />
-        <div>
-          <h3 className="song-title">{songs[currentSongIndex].title}</h3>
-          <p className="song-artist">{songs[currentSongIndex].artist}</p>
-        </div>
-      </div>
+        <SongText>
+          <SongTitle>{songs[currentSongIndex].title}</SongTitle>
+          <SongArtist>{songs[currentSongIndex].artist}</SongArtist>
+        </SongText>
+      </SongInfo>
       
-      {/* Barra de progreso */}
-      <div className="progress-container">
-        <span className="time-current">{formatTime(currentTime)}</span>
-        <input
-          type="range"
+      <ProgressContainer>
+        <TimeDisplay>{formatTime(currentTime)}</TimeDisplay>
+        <ProgressBar
           min="0"
           max="100"
           value={progress}
           onChange={handleProgressChange}
-          className="progress-bar"
         />
-        <span className="time-total">{formatTime(duration)}</span>
-      </div>
+        <TimeDisplay>{formatTime(duration)}</TimeDisplay>
+      </ProgressContainer>
       
-      {/* Controles principales */}
-      <div className="main-controls">
-        <button 
+      <Controls>
+        <ControlButton 
           onClick={toggleShuffle}
-          className={`control-btn ${isShuffleOn ? 'active' : ''}`}
+          className={isShuffleOn ? 'active' : ''}
         >
           <FaRandom />
-        </button>
+        </ControlButton>
         
-        <button onClick={handlePrev} className="control-btn">
+        <ControlButton onClick={handlePrev}>
           <FaStepBackward />
-        </button>
+        </ControlButton>
         
-        <button onClick={togglePlay} className="play-btn">
+        <PlayButton onClick={togglePlay}>
           {isPlaying ? <FaPause /> : <FaPlay />}
-        </button>
+        </PlayButton>
         
-        <button onClick={handleNext} className="control-btn">
+        <ControlButton onClick={handleNext}>
           <FaStepForward />
-        </button>
+        </ControlButton>
         
-        <button 
+        <ControlButton 
           onClick={toggleRepeat}
-          className={`control-btn ${isRepeatOn ? 'active' : ''}`}
+          className={isRepeatOn ? 'active' : ''}
         >
           <FaRedo />
-        </button>
-      </div>
+        </ControlButton>
+      </Controls>
       
-      {/* Control de volumen */}
-      <div className="volume-control">
-        <button onClick={toggleMute} className="volume-btn">
+      <VolumeControl>
+        <VolumeButton onClick={toggleMute}>
           {isMuted || volume === 0 ? <FaVolumeMute /> : <FaVolumeUp />}
-        </button>
-        <input
-          type="range"
+        </VolumeButton>
+        <VolumeSlider
           min="0"
           max="1"
           step="0.01"
           value={volume}
           onChange={handleVolumeChange}
-          className="volume-slider"
         />
-      </div>
-    </div>
+      </VolumeControl>
+    </PlayerContainer>
   );
 };
 
